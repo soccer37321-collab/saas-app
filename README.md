@@ -6,7 +6,7 @@ Next.js + Supabase + Tailwind CSS で構築した SaaS ボイラープレート�
 
 | レイヤー | 技術 |
 |---|---|
-| フロントエンド | Next.js 15 (App Router) / TypeScript |
+| フロントエンド | Next.js 16 (App Router) / TypeScript |
 | スタイリング | Tailwind CSS v4 |
 | バックエンド / DB | Supabase (PostgreSQL + Auth + RLS) |
 | ホスティング | Vercel |
@@ -182,7 +182,7 @@ saas-app/
 │   │   └── supabase/
 │   │       ├── client.ts         # ブラウザクライアント
 │   │       └── server.ts         # サーバーコンポーネント用クライアント
-│   └── middleware.ts             # 認証ルートガード
+│   └── proxy.ts                  # 認証ルートガード（Next.js 16）
 ├── supabase/
 │   └── migrations/
 │       └── 20240001_init.sql     # 初期スキーマ
