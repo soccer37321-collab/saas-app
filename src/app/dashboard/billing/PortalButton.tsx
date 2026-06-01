@@ -1,0 +1,30 @@
+"use client";
+
+import { useState } from "react";
+
+export default function PortalButton() {
+  const [loading, setLoading] = useState(false);
+
+  async function handlePortal() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/stripe/create-portal", { method: "POST" });
+      const { url } = await res.json();
+      if (url) window.location.href = url;
+    } catch {
+      alert("エラーが発生しました。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handlePortal}
+      disabled={loading}
+      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+    >
+      {loading ? "処理中..." : "お支払い管理（Stripe）"}
+    </button>
+  );
+}
