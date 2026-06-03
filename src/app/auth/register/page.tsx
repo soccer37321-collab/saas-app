@@ -1,22 +1,55 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 export default function RegisterPage() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [success, setSuccess]   = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [widgetKey, setWidgetKey] = useState(0);
+
+  const handleToken  = useCallback((t: string) => setTurnstileToken(t), []);
+  const handleExpire = useCallback(() => setTurnstileToken(null), []);
+
+  const resetWidget = () => {
+    setTurnstileToken(null);
+    setWidgetKey(k => k + 1);
+  };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!turnstileToken) {
+      setError("CAPTCHAを完了してください。");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
+    // 1. Verify Turnstile token server-side
+    const verifyRes = await fetch("/api/auth/verify-turnstile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: turnstileToken }),
+    });
+
+    if (!verifyRes.ok) {
+      const { error: msg } = await verifyRes.json().catch(() => ({}));
+      setError(msg ?? "CAPTCHA認証に失敗しました。ページを更新して再試行してください。");
+      setLoading(false);
+      resetWidget();
+      return;
+    }
+
+    // 2. Sign up with Supabase
     const supabase = createClient();
     const { error } = await supabase.auth.signUp({
       email,
@@ -27,6 +60,7 @@ export default function RegisterPage() {
     if (error) {
       setError(error.message);
       setLoading(false);
+      resetWidget();
       return;
     }
 
@@ -103,6 +137,12 @@ export default function RegisterPage() {
             />
           </div>
 
+          <TurnstileWidget
+            key={widgetKey}
+            onToken={handleToken}
+            onExpire={handleExpire}
+          />
+
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
               {error}
@@ -111,7 +151,7 @@ export default function RegisterPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !turnstileToken}
             className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
           >
             {loading ? "登録中..." : "アカウントを作成"}

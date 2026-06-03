@@ -2,9 +2,10 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { sessionStartKey } from "@/components/SessionGuard";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, Suspense } from "react";
+import { useCallback, useState, Suspense } from "react";
 
 const TIMEOUT_MESSAGES: Record<string, string> = {
   inactivity:  "30分間操作がなかったため、セキュリティのため自動的にログアウトしました。",
@@ -16,26 +17,58 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
 
-  const [email, setEmail]     = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError]     = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail]               = useState("");
+  const [password, setPassword]         = useState("");
+  const [error, setError]               = useState<string | null>(null);
+  const [loading, setLoading]           = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [widgetKey, setWidgetKey]       = useState(0);
+
+  const handleToken    = useCallback((t: string) => setTurnstileToken(t), []);
+  const handleExpire   = useCallback(() => setTurnstileToken(null), []);
+
+  const resetWidget = () => {
+    setTurnstileToken(null);
+    setWidgetKey(k => k + 1);
+  };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!turnstileToken) {
+      setError("CAPTCHAを完了してください。");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
+    // 1. Verify Turnstile token server-side
+    const verifyRes = await fetch("/api/auth/verify-turnstile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: turnstileToken }),
+    });
+
+    if (!verifyRes.ok) {
+      const { error: msg } = await verifyRes.json().catch(() => ({}));
+      setError(msg ?? "CAPTCHA認証に失敗しました。ページを更新して再試行してください。");
+      setLoading(false);
+      resetWidget();
+      return;
+    }
+
+    // 2. Sign in with Supabase
     const supabase = createClient();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(error.message);
       setLoading(false);
+      resetWidget();
       return;
     }
 
-    // Record session start time for the 24h max session timer
     if (data.user) {
       localStorage.setItem(sessionStartKey(data.user.id), String(Date.now()));
     }
@@ -87,6 +120,12 @@ function LoginForm() {
             />
           </div>
 
+          <TurnstileWidget
+            key={widgetKey}
+            onToken={handleToken}
+            onExpire={handleExpire}
+          />
+
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
               {error}
@@ -95,7 +134,7 @@ function LoginForm() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !turnstileToken}
             className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
           >
             {loading ? "ログイン中..." : "ログイン"}
