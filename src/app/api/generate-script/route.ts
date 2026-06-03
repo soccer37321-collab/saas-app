@@ -5,6 +5,7 @@ import { generateScriptSchema } from "@/lib/schemas";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/audit";
 import { apiError } from "@/lib/errors";
+import { getClientIp, trackIpAccess } from "@/lib/ip-rate-limit";
 
 const client = new Anthropic();
 
@@ -16,6 +17,15 @@ export async function POST(req: NextRequest) {
 
   if (!user) {
     return apiError("Unauthorized", 401);
+  }
+
+  const ip = getClientIp(req);
+  const { count: ipCount, suspicious, maskedIp } = await trackIpAccess(ip, "generate-script");
+  if (suspicious) {
+    void logAudit(user.id, "suspicious_ip_generate_script", "generate-script", {
+      masked_ip: maskedIp,
+      count: ipCount,
+    });
   }
 
   const { allowed, remaining } = await checkRateLimit(user.id, "generate-script");

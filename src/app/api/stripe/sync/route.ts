@@ -26,6 +26,11 @@ export async function POST() {
 
     let customerId = sub?.stripe_customer_id as string | undefined;
     if (!customerId) {
+      // Validate UUID format before interpolating into Stripe query string
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(user.id)) {
+        return apiError("Invalid user ID", 400);
+      }
       const customers = await stripe.customers.search({
         query: `metadata['supabase_user_id']:'${user.id}'`,
         limit: 1,

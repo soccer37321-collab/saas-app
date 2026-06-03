@@ -1,0 +1,15 @@
+[allowlist]
+description = "Known test/development values"
+regexes = [
+  # Cloudflare Turnstile 公式テストキー
+  "1x00000000000000000000AA",
+  "1x0000000000000000000000000000000AA",
+  # Stripe テスト用プレフィックス (sk_test_) は許容
+  "sk_test_",
+  "whsec_",
+]
+paths = [
+  ".env.example",
+  ".env.local",
+  "README.md",
+]
