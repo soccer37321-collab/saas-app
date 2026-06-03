@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import SignOutButton from "./SignOutButton";
@@ -17,13 +18,14 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
-  const { data: sub } = await supabase
+  const admin = createAdminClient();
+  const { data: sub } = await admin
     .from("subscriptions")
-    .select("plan, status")
+    .select("plan_name, status")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const isPro = sub?.plan === "pro" && sub?.status === "active";
+  const isPro = sub?.plan_name === "pro" && sub?.status === "active";
 
   return (
     <div className="min-h-screen bg-gray-50">

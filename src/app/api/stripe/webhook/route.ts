@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           stripe_price_id: item?.price.id ?? null,
-          plan: "pro",
+          plan_name: "pro",
           status: stripeSub.status,
           current_period_end: periodEnd(item),
         },
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         .update({
           stripe_subscription_id: stripeSub.id,
           stripe_price_id: item?.price.id ?? null,
-          plan: isActive ? "pro" : "free",
+          plan_name: isActive ? "pro" : "free",
           status: stripeSub.status,
           current_period_end: periodEnd(item),
         })
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
       await supabase
         .from("subscriptions")
         .update({
-          plan: "free",
+          plan_name: "free",
           status: "canceled",
           stripe_subscription_id: null,
           stripe_price_id: null,

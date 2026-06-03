@@ -1,7 +1,41 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { stripe } from "@/lib/stripe";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import PortalButton from "./PortalButton";
+import SyncButton from "./SyncButton";
+
+async function syncFromStripe(userId: string, customerId: string) {
+  const subscriptions = await stripe.subscriptions.list({
+    customer: customerId,
+    status: "active",
+    limit: 1,
+  });
+
+  const admin = createAdminClient();
+
+  if (subscriptions.data.length === 0) return;
+
+  const stripeSub = subscriptions.data[0];
+  const item = stripeSub.items.data[0];
+  const periodEnd = item?.current_period_end
+    ? new Date(item.current_period_end * 1000).toISOString()
+    : null;
+
+  await admin.from("subscriptions").upsert(
+    {
+      user_id: userId,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: stripeSub.id,
+      stripe_price_id: item?.price.id ?? null,
+      plan_name: "pro",
+      status: stripeSub.status,
+      current_period_end: periodEnd,
+    },
+    { onConflict: "user_id" }
+  );
+}
 
 export default async function BillingPage({
   searchParams,
@@ -15,15 +49,28 @@ export default async function BillingPage({
 
   if (!user) redirect("/auth/login");
 
-  const { data: sub } = await supabase
+  const { success } = await searchParams;
+
+  const admin = createAdminClient();
+  const { data: sub } = await admin
     .from("subscriptions")
-    .select("plan, status, current_period_end")
+    .select("plan_name, status, current_period_end, stripe_customer_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const plan = sub?.plan ?? "free";
-  const isPro = plan === "pro" && sub?.status === "active";
-  const { success } = await searchParams;
+  // 決済成功後かつプランがまだ free の場合、Stripe から直接同期する
+  if (success === "true" && sub?.stripe_customer_id && sub?.plan_name !== "pro") {
+    await syncFromStripe(user.id, sub.stripe_customer_id);
+    // 最新状態を再取得
+    const { data: refreshed } = await admin
+      .from("subscriptions")
+      .select("plan_name, status, current_period_end, stripe_customer_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    Object.assign(sub, refreshed);
+  }
+
+  const isPro = sub?.plan_name === "pro" && sub?.status === "active";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -45,7 +92,10 @@ export default async function BillingPage({
 
         {/* 現在のプラン */}
         <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">現在のプラン</h2>
+          <div className="flex items-start justify-between">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">現在のプラン</h2>
+            <SyncButton />
+          </div>
           <div className="mt-3 flex items-center gap-3">
             <span className={`rounded-full px-3 py-1 text-sm font-semibold ${
               isPro

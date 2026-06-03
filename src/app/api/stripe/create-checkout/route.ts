@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe, PLANS } from "@/lib/stripe";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -29,6 +30,17 @@ export async function POST(req: NextRequest) {
       metadata: { supabase_user_id: user.id },
     });
     customerId = customer.id;
+
+    // 顧客IDを先に保存しておく（決済を中断しても次回は同じ顧客を再利用し、二重作成を防ぐ）
+    // ユーザー権限クライアントは RLS で INSERT 不可のため adminクライアントを使用
+    const admin = createAdminClient();
+    await admin.from("subscriptions").upsert(
+      {
+        user_id: user.id,
+        stripe_customer_id: customerId,
+      },
+      { onConflict: "user_id" }
+    );
   }
 
   const session = await stripe.checkout.sessions.create({
