@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { clearSessionKeys } from "@/components/SessionGuard";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -11,6 +12,10 @@ export default function SignOutButton() {
   async function handleSignOut() {
     setLoading(true);
     const supabase = createClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) clearSessionKeys(user.id);
+
     await supabase.auth.signOut();
     router.push("/auth/login");
     router.refresh();

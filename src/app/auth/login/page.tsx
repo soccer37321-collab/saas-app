@@ -1,15 +1,24 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { sessionStartKey } from "@/components/SessionGuard";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, Suspense } from "react";
 
-export default function LoginPage() {
+const TIMEOUT_MESSAGES: Record<string, string> = {
+  inactivity:  "30分間操作がなかったため、セキュリティのため自動的にログアウトしました。",
+  max_session: "セッション有効期限（24時間）を超えたため、再度ログインしてください。",
+};
+
+function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const reason = searchParams.get("reason");
+
+  const [email, setEmail]     = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -18,12 +27,17 @@ export default function LoginPage() {
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
+    }
+
+    // Record session start time for the 24h max session timer
+    if (data.user) {
+      localStorage.setItem(sessionStartKey(data.user.id), String(Date.now()));
     }
 
     router.push("/dashboard");
@@ -40,6 +54,12 @@ export default function LoginPage() {
             新規登録
           </Link>
         </p>
+
+        {reason && TIMEOUT_MESSAGES[reason] && (
+          <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+            {TIMEOUT_MESSAGES[reason]}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
@@ -83,5 +103,13 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
