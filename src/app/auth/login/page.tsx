@@ -139,6 +139,12 @@ function LoginForm() {
           >
             {loading ? "ログイン中..." : "ログイン"}
           </button>
+
+          <p className="text-center text-sm text-gray-500">
+            <Link href="/auth/forgot-password" className="text-indigo-600 hover:underline">
+              パスワードをお忘れですか？
+            </Link>
+          </p>
         </form>
       </div>
     </div>

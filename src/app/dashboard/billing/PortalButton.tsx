@@ -2,6 +2,17 @@
 
 import { useState } from "react";
 
+const ALLOWED_STRIPE_HOSTS = ["billing.stripe.com", "checkout.stripe.com"];
+
+function isStripeUrl(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === "https:" && ALLOWED_STRIPE_HOSTS.includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
 export default function PortalButton() {
   const [loading, setLoading] = useState(false);
 
@@ -10,7 +21,11 @@ export default function PortalButton() {
     try {
       const res = await fetch("/api/stripe/create-portal", { method: "POST" });
       const { url } = await res.json();
-      if (url) window.location.href = url;
+      if (url && isStripeUrl(url)) {
+        window.location.href = url;
+      } else {
+        alert("エラーが発生しました。");
+      }
     } catch {
       alert("エラーが発生しました。");
     } finally {

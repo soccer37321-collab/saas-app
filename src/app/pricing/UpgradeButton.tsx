@@ -3,6 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const ALLOWED_STRIPE_HOSTS = ["billing.stripe.com", "checkout.stripe.com"];
+
+function isStripeUrl(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === "https:" && ALLOWED_STRIPE_HOSTS.includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
 export default function UpgradeButton() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -16,7 +27,11 @@ export default function UpgradeButton() {
         return;
       }
       const { url } = await res.json();
-      if (url) window.location.href = url;
+      if (url && isStripeUrl(url)) {
+        window.location.href = url;
+      } else {
+        alert("エラーが発生しました。再度お試しください。");
+      }
     } catch {
       alert("エラーが発生しました。再度お試しください。");
     } finally {

@@ -3,8 +3,9 @@ import { createAdminClient } from "./supabase/admin";
 
 // Threshold: requests per 5-minute window before flagging as suspicious
 const THRESHOLDS: Record<string, number> = {
-  auth:              20,  // login/register attempts
-  "generate-script": 15,  // Claude API calls
+  auth:               20, // login/register attempts
+  "generate-script":  15, // Claude API calls
+  "forgot-password":   5, // password reset emails (strict)
 };
 
 /** One-way hash of IP — never store raw IPs in the database. */
