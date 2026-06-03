@@ -11,6 +11,6 @@ export async function logAudit(
     await admin.from("audit_logs").insert({ user_id: userId, action, resource, metadata });
   } catch (err) {
     // Audit failures must never break the main request path
-    console.error("[audit] log failed:", err);
+    console.error("[audit] log failed:", err instanceof Error ? err.message : String(err));
   }
 }

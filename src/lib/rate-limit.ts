@@ -20,7 +20,7 @@ export async function checkRateLimit(
     return { allowed: count <= limit, remaining: Math.max(0, limit - count) };
   } catch (err) {
     // Fail open — rate-limit errors must not block legitimate requests
-    console.error("[rate-limit] check failed:", err);
+    console.error("[rate-limit] check failed:", err instanceof Error ? err.message : String(err));
     return { allowed: true, remaining: 0 };
   }
 }

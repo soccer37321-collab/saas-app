@@ -9,6 +9,22 @@ function periodEnd(item: Stripe.SubscriptionItem | undefined): string | null {
   return new Date(item.current_period_end * 1000).toISOString();
 }
 
+async function markEventProcessed(
+  supabase: ReturnType<typeof createAdminClient>,
+  eventId: string,
+  eventType: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("processed_stripe_events")
+    .insert({ event_id: eventId, event_type: eventType });
+  // error.code === "23505" means duplicate key — already processed
+  if (error) {
+    if ((error as { code?: string }).code === "23505") return false;
+    throw error;
+  }
+  return true;
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const sig = req.headers.get("stripe-signature");
@@ -25,13 +41,19 @@ export async function POST(req: NextRequest) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err) {
-    console.error("[webhook] signature verification failed:", err instanceof Error ? err.message : err);
+    console.error("[webhook] signature verification failed:", err instanceof Error ? err.message : String(err));
     return new NextResponse("Webhook signature verification failed", { status: 400 });
   }
 
   const supabase = createAdminClient();
 
   try {
+    const isNew = await markEventProcessed(supabase, event.id, event.type);
+    if (!isNew) {
+      // Duplicate delivery — acknowledge without reprocessing
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -114,7 +136,7 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (err) {
-    console.error(`[webhook] handler error for ${event.type}:`, err);
+    console.error(`[webhook] handler error for ${event.type}:`, err instanceof Error ? err.message : String(err));
     return new NextResponse("Internal server error", { status: 500 });
   }
 
