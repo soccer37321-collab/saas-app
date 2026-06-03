@@ -57,6 +57,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Never expose source maps to the browser in production
+  productionBrowserSourceMaps: false,
   async headers() {
     return [
       {

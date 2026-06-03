@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   const sig = req.headers.get("stripe-signature");
 
   if (!sig) {
-    return new NextResponse("Missing stripe-signature header", { status: 400 });
+    return new NextResponse("Missing stripe-signature header", { status: 400, headers: { "Content-Type": "text/plain" } });
   }
 
   let event: Stripe.Event;
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     console.error("[webhook] signature verification failed:", err instanceof Error ? err.message : String(err));
-    return new NextResponse("Webhook signature verification failed", { status: 400 });
+    return new NextResponse("Webhook signature verification failed", { status: 400, headers: { "Content-Type": "text/plain" } });
   }
 
   const supabase = createAdminClient();
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.error(`[webhook] handler error for ${event.type}:`, err instanceof Error ? err.message : String(err));
-    return new NextResponse("Internal server error", { status: 500 });
+    return new NextResponse("Internal server error", { status: 500, headers: { "Content-Type": "text/plain" } });
   }
 
   return NextResponse.json({ received: true });
