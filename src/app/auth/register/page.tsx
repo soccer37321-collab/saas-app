@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import TurnstileWidget from "@/components/TurnstileWidget";
+import { useHibpCheck } from "@/hooks/useHibpCheck";
 import Link from "next/link";
 import { useCallback, useState } from "react";
 
@@ -17,6 +18,12 @@ export default function RegisterPage() {
 
   const handleToken  = useCallback((t: string) => setTurnstileToken(t), []);
   const handleExpire = useCallback(() => setTurnstileToken(null), []);
+  const { status: hibpStatus, pwnCount, check: hibpCheck } = useHibpCheck();
+
+  const handlePasswordChange = (val: string) => {
+    setPassword(val);
+    hibpCheck(val);
+  };
 
   const resetWidget = () => {
     setTurnstileToken(null);
@@ -28,6 +35,10 @@ export default function RegisterPage() {
 
     if (!turnstileToken) {
       setError("CAPTCHAを完了してください。");
+      return;
+    }
+    if (hibpStatus === "pwned") {
+      setError(`このパスワードは過去のデータ漏洩で${pwnCount.toLocaleString()}回使用されています。別のパスワードを設定してください。`);
       return;
     }
 
@@ -132,9 +143,26 @@ export default function RegisterPage() {
               required
               minLength={8}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              onChange={(e) => handlePasswordChange(e.target.value)}
+              className={`mt-1 block w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                hibpStatus === "pwned"
+                  ? "border-red-400 focus:border-red-500 focus:ring-red-500"
+                  : hibpStatus === "safe"
+                  ? "border-green-400 focus:border-green-500 focus:ring-green-500"
+                  : "border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+              }`}
             />
+            {hibpStatus === "checking" && (
+              <p className="mt-1 text-xs text-gray-500">漏洩データベースを確認中...</p>
+            )}
+            {hibpStatus === "pwned" && (
+              <p className="mt-1 text-xs text-red-600">
+                このパスワードは過去のデータ漏洩で{pwnCount.toLocaleString()}回使用されています。別のパスワードを設定してください。
+              </p>
+            )}
+            {hibpStatus === "safe" && (
+              <p className="mt-1 text-xs text-green-600">漏洩データベースに登録されていません。</p>
+            )}
           </div>
 
           <TurnstileWidget
@@ -151,7 +179,7 @@ export default function RegisterPage() {
 
           <button
             type="submit"
-            disabled={loading || !turnstileToken}
+            disabled={loading || !turnstileToken || hibpStatus === "pwned" || hibpStatus === "checking"}
             className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
           >
             {loading ? "登録中..." : "アカウントを作成"}

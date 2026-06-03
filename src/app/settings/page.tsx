@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import PasswordForm from "./PasswordForm";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -21,7 +22,7 @@ export default async function SettingsPage() {
         <h1 className="text-lg font-semibold text-gray-900">設定</h1>
       </header>
 
-      <main className="mx-auto max-w-2xl px-6 py-8">
+      <main className="mx-auto max-w-2xl px-6 py-8 space-y-6">
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">プロフィール</h2>
           <dl className="mt-4 space-y-3 text-sm">
@@ -35,6 +36,8 @@ export default async function SettingsPage() {
             </div>
           </dl>
         </div>
+
+        <PasswordForm />
       </main>
     </div>
   );
