@@ -1,6 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { generateScriptSchema } from "@/lib/schemas";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { logAudit } from "@/lib/audit";
+import { apiError } from "@/lib/errors";
 
 const client = new Anthropic();
 
@@ -11,17 +15,31 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return apiError("Unauthorized", 401);
   }
 
-  const { theme, duration, language } = await req.json();
-
-  if (!theme || !duration || !language) {
-    return new Response(JSON.stringify({ error: "Missing required fields" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+  const { allowed, remaining } = await checkRateLimit(user.id, "generate-script");
+  if (!allowed) {
+    void logAudit(user.id, "rate_limit_exceeded", "generate-script");
+    return NextResponse.json(
+      { error: "リクエスト上限（1時間に10回）を超えました。しばらくしてから再試行してください。" },
+      { status: 429, headers: { "Retry-After": "3600" } }
+    );
   }
+
+  const body = await req.json().catch(() => null);
+  const parsed = generateScriptSchema.safeParse(body);
+  if (!parsed.success) {
+    return apiError(parsed.error.issues[0]?.message ?? "Invalid input", 400);
+  }
+  const { theme, duration, language } = parsed.data;
+
+  void logAudit(user.id, "generate_script", "generate-script", {
+    theme_length: theme.length,
+    duration,
+    language,
+    remaining_quota: remaining,
+  });
 
   const isJapanese = language === "ja";
 
@@ -89,7 +107,9 @@ Write in a natural conversational tone suitable for narration.`;
 
         controller.close();
       } catch (err) {
-        controller.error(err);
+        console.error("[generate-script] stream error:", err);
+        void logAudit(user.id, "generate_script_error", "generate-script");
+        controller.error(new Error("生成中にエラーが発生しました"));
       }
     },
   });
@@ -98,6 +118,7 @@ Write in a natural conversational tone suitable for narration.`;
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache",
+      "X-RateLimit-Remaining": String(remaining),
     },
   });
 }

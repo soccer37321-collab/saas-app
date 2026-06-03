@@ -35,4 +35,8 @@ create policy "Users can view own subscription"
   on subscriptions for select
   using (auth.uid() = user_id);
 
--- サービスロール（webhook）は RLS をバイパスするため追加ポリシー不要
+create policy "subscriptions_select_own"
+  on subscriptions for select
+  using (auth.uid() = user_id);
+
+-- サービスロール（webhook）は RLS をバイパスするため INSERT/UPDATE/DELETE ポリシー不要

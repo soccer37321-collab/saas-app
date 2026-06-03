@@ -1,6 +1,7 @@
 import { stripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import type Stripe from "stripe";
 
 function periodEnd(item: Stripe.SubscriptionItem | undefined): string | null {
@@ -24,77 +25,97 @@ export async function POST(req: NextRequest) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err) {
-    return new NextResponse(`Webhook Error: ${(err as Error).message}`, {
-      status: 400,
-    });
+    console.error("[webhook] signature verification failed:", err instanceof Error ? err.message : err);
+    return new NextResponse("Webhook signature verification failed", { status: 400 });
   }
 
   const supabase = createAdminClient();
 
-  switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object as Stripe.Checkout.Session;
-      if (session.mode !== "subscription") break;
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.mode !== "subscription") break;
 
-      const userId = session.metadata?.supabase_user_id;
-      const subscriptionId = session.subscription as string;
-      const customerId = session.customer as string;
+        const userId = session.metadata?.supabase_user_id;
+        const subscriptionId = session.subscription as string;
+        const customerId = session.customer as string;
 
-      if (!userId) break;
+        if (!userId) break;
 
-      const stripeSub = await stripe.subscriptions.retrieve(subscriptionId);
-      const item = stripeSub.items.data[0];
+        const stripeSub = await stripe.subscriptions.retrieve(subscriptionId);
+        const item = stripeSub.items.data[0];
 
-      await supabase.from("subscriptions").upsert(
-        {
-          user_id: userId,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          stripe_price_id: item?.price.id ?? null,
-          plan_name: "pro",
+        await supabase.from("subscriptions").upsert(
+          {
+            user_id: userId,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscriptionId,
+            stripe_price_id: item?.price.id ?? null,
+            plan_name: "pro",
+            status: stripeSub.status,
+            current_period_end: periodEnd(item),
+          },
+          { onConflict: "user_id" }
+        );
+
+        void logAudit(userId, "subscription_created", "webhook", {
+          stripe_event: event.type,
+          subscription_id: subscriptionId,
+        });
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        const stripeSub = event.data.object as Stripe.Subscription;
+        const customerId = stripeSub.customer as string;
+        const item = stripeSub.items.data[0];
+        const isActive = stripeSub.status === "active" || stripeSub.status === "trialing";
+
+        await supabase
+          .from("subscriptions")
+          .update({
+            stripe_subscription_id: stripeSub.id,
+            stripe_price_id: item?.price.id ?? null,
+            plan_name: isActive ? "pro" : "free",
+            status: stripeSub.status,
+            current_period_end: periodEnd(item),
+          })
+          .eq("stripe_customer_id", customerId);
+
+        void logAudit(null, "subscription_updated", "webhook", {
+          stripe_event: event.type,
           status: stripeSub.status,
-          current_period_end: periodEnd(item),
-        },
-        { onConflict: "user_id" }
-      );
-      break;
+          customer_id: customerId,
+        });
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const stripeSub = event.data.object as Stripe.Subscription;
+        const customerId = stripeSub.customer as string;
+
+        await supabase
+          .from("subscriptions")
+          .update({
+            plan_name: "free",
+            status: "canceled",
+            stripe_subscription_id: null,
+            stripe_price_id: null,
+            current_period_end: null,
+          })
+          .eq("stripe_customer_id", customerId);
+
+        void logAudit(null, "subscription_deleted", "webhook", {
+          stripe_event: event.type,
+          customer_id: customerId,
+        });
+        break;
+      }
     }
-
-    case "customer.subscription.updated": {
-      const stripeSub = event.data.object as Stripe.Subscription;
-      const customerId = stripeSub.customer as string;
-      const item = stripeSub.items.data[0];
-      const isActive = stripeSub.status === "active" || stripeSub.status === "trialing";
-
-      await supabase
-        .from("subscriptions")
-        .update({
-          stripe_subscription_id: stripeSub.id,
-          stripe_price_id: item?.price.id ?? null,
-          plan_name: isActive ? "pro" : "free",
-          status: stripeSub.status,
-          current_period_end: periodEnd(item),
-        })
-        .eq("stripe_customer_id", customerId);
-      break;
-    }
-
-    case "customer.subscription.deleted": {
-      const stripeSub = event.data.object as Stripe.Subscription;
-      const customerId = stripeSub.customer as string;
-
-      await supabase
-        .from("subscriptions")
-        .update({
-          plan_name: "free",
-          status: "canceled",
-          stripe_subscription_id: null,
-          stripe_price_id: null,
-          current_period_end: null,
-        })
-        .eq("stripe_customer_id", customerId);
-      break;
-    }
+  } catch (err) {
+    console.error(`[webhook] handler error for ${event.type}:`, err);
+    return new NextResponse("Internal server error", { status: 500 });
   }
 
   return NextResponse.json({ received: true });
