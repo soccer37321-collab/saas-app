@@ -12,7 +12,7 @@ export const PLANS = {
   },
   pro: {
     name: "プロ",
-    price: 980,
+    price: 1980,
     priceId: process.env.STRIPE_PRO_PRICE_ID!,
     features: ["無制限の台本生成", "全言語対応", "優先サポート"],
   },
